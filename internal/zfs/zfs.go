@@ -17,6 +17,7 @@ type Pool struct {
 	CapPct      int       `json:"cap_pct"`
 	LastScrub   time.Time `json:"last_scrub"`
 	ScrubErrors int       `json:"scrub_errors"`
+	NextScrub   time.Time `json:"next_scrub"`
 }
 
 func Status(ctx context.Context) (Pool, error) {
@@ -80,13 +81,21 @@ func Status(ctx context.Context) (Pool, error) {
 		return Pool{Name: fields[0], Health: fields[4], SizeBytes: size, FreeBytes: free, CapPct: cap, LastScrub: time.Time{}, ScrubErrors: 0}, nil
 	}
 
-	layout := "Mon Jan  2 15:04:05 2006"
-	t, err := time.Parse(layout, scanLine[dateIndex:])
+	t, err := time.ParseInLocation("Mon Jan  2 15:04:05 2006", scanLine[dateIndex:], time.Local)
 	if err != nil {
 		return Pool{}, fmt.Errorf("time conversion: %w", err)
 	}
 
-	pool := Pool{Name: fields[0], Health: fields[4], SizeBytes: size, FreeBytes: free, CapPct: cap, LastScrub: t, ScrubErrors: serr}
+	out3, err := exec.CommandContext(ctx, "systemctl", "show", "-p", "NextElapseUSecRealtime", "--value", "zfs-scrub-weekly@stag.timer").Output()
+	if err != nil {
+		return Pool{}, fmt.Errorf("systemctl show: %w", err)
+	}
+	nextS, err := time.Parse("Mon 2006-01-02 15:04:05 MST", strings.TrimSpace(string(out3)))
+	if err != nil {
+		return Pool{}, fmt.Errorf("time conversion: %w", err)
+	}
+
+	pool := Pool{Name: fields[0], Health: fields[4], SizeBytes: size, FreeBytes: free, CapPct: cap, LastScrub: t, ScrubErrors: serr, NextScrub: nextS}
 
 	return pool, nil
 }
