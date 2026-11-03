@@ -26,10 +26,7 @@ type Client struct {
 func New(baseUrl, key string) *Client {
 	c := &http.Client{
 		Timeout: 10 * time.Second,
-		// DEV ONLY: traefik serves its self-signed default cert until it gets a
-		// real one (certs were deferred at the media-stack cutover). gosec will
-		// flag this (G402) — it must not survive into A8.
-		Transport: &http.Transport{
+		Transport: &http.Transport{ //To fix later, DEV ONLY
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
@@ -40,6 +37,7 @@ var ErrBadRequest = errors.New("bad request")
 var ErrNotFound = errors.New("not found")
 var ErrBadGateway = errors.New("invalid response from server")
 var ErrInternal = errors.New("internal server error")
+var ErrUnavailable = errors.New("service unavailable")
 
 func (c *Client) Check(ctx context.Context, name string) (Check, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseUrl+"/api/v1/checks/", nil)
@@ -50,7 +48,7 @@ func (c *Client) Check(ctx context.Context, name string) (Check, error) {
 	req.Header.Set("X-Api-Key", c.key)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return Check{}, fmt.Errorf("executing request: %w, %w", ErrBadRequest, err)
+		return Check{}, fmt.Errorf("executing request: %w, %w", ErrUnavailable, err)
 	}
 	defer resp.Body.Close()
 

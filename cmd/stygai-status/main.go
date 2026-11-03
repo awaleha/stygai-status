@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/awaleha/stygai-status/internal/docker"
 	"github.com/awaleha/stygai-status/internal/healthchecks"
 	"github.com/awaleha/stygai-status/internal/system"
 	"github.com/awaleha/stygai-status/internal/zfs"
@@ -104,8 +105,10 @@ func backupsHandler(hc checker) http.HandlerFunc {
 				eStatus = http.StatusBadRequest
 			case errors.Is(err, healthchecks.ErrBadGateway):
 				eStatus = http.StatusBadGateway
+			case errors.Is(err, healthchecks.ErrUnavailable):
+				eStatus = http.StatusServiceUnavailable
 			default:
-				eStatus = http.StatusBadRequest
+				eStatus = http.StatusInternalServerError
 			}
 			slog.Error("backupsHandler", "error", err)
 			writeJSON(w, eStatus, map[string]string{"error": "backups check failed - " + err.Error()})
@@ -114,6 +117,32 @@ func backupsHandler(hc checker) http.HandlerFunc {
 
 		orWidget := Widget{Name: "oldtown restic", Status: c.Status, LastS: formatTime(c.LastPing)}
 		writeJSON(w, http.StatusOK, orWidget)
+	}
+}
+
+type listener func(ctx context.Context) ([]docker.Container, error)
+
+func dockerHandler(list listener) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cs, err := list(r.Context())
+		var eStatus int
+		if err != nil {
+			switch {
+			case errors.Is(err, docker.ErrBadRequest):
+				eStatus = http.StatusBadRequest
+			case errors.Is(err, docker.ErrBadGateway):
+				eStatus = http.StatusBadGateway
+			case errors.Is(err, docker.ErrUnavailable):
+				eStatus = http.StatusServiceUnavailable
+			default:
+				eStatus = http.StatusInternalServerError
+			}
+			slog.Error("dockerHandler", "error", err)
+			writeJSON(w, eStatus, map[string]string{"error": "docker list failed - " + err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, cs)
 	}
 }
 
@@ -126,18 +155,19 @@ func main() {
 		slog.Error("error loading .env file")
 		os.Exit(1)
 	}
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthzHandler)
-	mux.HandleFunc("GET /api/v1/zfs", zfsHandler)
-	mux.HandleFunc("GET /api/v1/system", systemHandler)
 	hcUrl := os.Getenv("HC_URL")
 	hcKey := os.Getenv("HC_KEY")
 	if hcUrl == "" || hcKey == "" {
 		slog.Error("value(s) not set -", "hcUrl", hcUrl, "hcKey", hcKey)
 		os.Exit(1)
 	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.HandleFunc("GET /api/v1/zfs", zfsHandler)
+	mux.HandleFunc("GET /api/v1/system", systemHandler)
 	mux.HandleFunc("GET /api/v1/backups", backupsHandler(healthchecks.New(hcUrl, hcKey)))
+	mux.HandleFunc("GET /api/v1/docker", dockerHandler(docker.List))
 
 	srv := &http.Server{
 		Addr:              ":8082",
