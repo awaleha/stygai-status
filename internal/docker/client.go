@@ -54,13 +54,19 @@ func List(ctx context.Context) ([]Container, error) {
 		return []Container{}, fmt.Errorf("%w {status:%s, body:%s}", ErrBadGateway, resp.Status, string(body))
 	}
 
+	return parseList(resp.Body)
+}
+
+// parseList turns /containers/json output into the dashboard's container
+// list without touching the socket, so tests can feed it fixtures.
+func parseList(r io.Reader) ([]Container, error) {
 	cList := []struct {
 		Names  []string `json:"Names"`
 		State  string   `json:"State"`
 		Status string   `json:"Status"`
 	}{}
 
-	if err := json.NewDecoder(resp.Body).Decode(&cList); err != nil {
+	if err := json.NewDecoder(r).Decode(&cList); err != nil {
 		return []Container{}, fmt.Errorf("decoding response: %w, %w", ErrInternal, err)
 	}
 

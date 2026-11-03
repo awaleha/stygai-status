@@ -81,21 +81,14 @@ func Collect() (Stats, error) {
 	if cpuPer.Err != nil {
 		return Stats{}, fmt.Errorf("failed to get cpu percentage: %w", cpuPer.Err)
 	}
-	if len(cpuPer.CpuPer) == 0 {
-		return Stats{}, fmt.Errorf("no per-cpu samples returned")
+	perCpu, cpuAvg, err := buildCPU(cpuPer.CpuPer)
+	if err != nil {
+		return Stats{}, err
 	}
-
-	perCpu := make(map[string]float64, len(cpuPer.CpuPer))
-	var cpuAvg float64
-	for i, p := range cpuPer.CpuPer {
-		perCpu["C"+strconv.Itoa(i)] = roundTo2d(p)
-		cpuAvg += p
-	}
-	cpuAvg = cpuAvg / float64(len(cpuPer.CpuPer))
 
 	return Stats{
 			Hostname: hInfo.Hostname,
-			CPUPct:   roundTo2d(cpuAvg),
+			CPUPct:   cpuAvg,
 			CPUs:     perCpu,
 			MemUsed:  vMem.Used,
 			MemTotal: vMem.Total,
@@ -124,4 +117,20 @@ func Collect() (Stats, error) {
 
 func roundTo2d(num float64) float64 {
 	return math.Round(num*100) / 100
+}
+
+// buildCPU turns raw per-cpu percentages into the dashboard's map and
+// rounded average without touching gopsutil, so tests can feed it fake
+// samples.
+func buildCPU(cpuPer []float64) (map[string]float64, float64, error) {
+	if len(cpuPer) == 0 {
+		return nil, 0, fmt.Errorf("no per-cpu samples returned")
+	}
+	perCpu := make(map[string]float64, len(cpuPer))
+	var cpuAvg float64
+	for i, p := range cpuPer {
+		perCpu["C"+strconv.Itoa(i)] = roundTo2d(p)
+		cpuAvg += p
+	}
+	return perCpu, roundTo2d(cpuAvg / float64(len(cpuPer))), nil
 }

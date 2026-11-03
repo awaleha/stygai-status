@@ -39,13 +39,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	var tags []string
-	for _, tag := range strings.Split(*tagsFlag, ",") {
-		trimmed := strings.TrimSpace(tag)
-		if trimmed != "" {
-			tags = append(tags, trimmed)
-		}
-	}
+	tags := splitTags(*tagsFlag)
 
 	ntfyURL := os.Getenv("NTFY_URL")
 	ntfyToken := os.Getenv("NTFY_TOKEN")
@@ -60,16 +54,8 @@ func main() {
 
 	id, err := client.Publish(ctx, *topic, message, tags...)
 
-	var eStatus int
 	if err != nil {
-		switch {
-		case errors.Is(err, notifier.ErrBadGateway):
-			eStatus = http.StatusBadGateway
-		case errors.Is(err, notifier.ErrUnavailable):
-			eStatus = http.StatusServiceUnavailable
-		default:
-			eStatus = http.StatusInternalServerError
-		}
+		eStatus := publishStatus(err)
 		slog.Error("publish failed -", "status", eStatus, "error", err)
 		os.Exit(1)
 	}
@@ -77,4 +63,30 @@ func main() {
 	slog.Info("published", "topic", *topic, "id", id)
 	os.Exit(0)
 
+}
+
+// splitTags turns the --tags flag into the tag list: comma-split,
+// whitespace-trimmed, empty entries dropped.
+func splitTags(tagsFlag string) []string {
+	var tags []string
+	for _, tag := range strings.Split(tagsFlag, ",") {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed != "" {
+			tags = append(tags, trimmed)
+		}
+	}
+	return tags
+}
+
+// publishStatus maps a Publish error to the HTTP-style status the CLI
+// reports before exiting; anything unmapped falls through to 500.
+func publishStatus(err error) int {
+	switch {
+	case errors.Is(err, notifier.ErrBadGateway):
+		return http.StatusBadGateway
+	case errors.Is(err, notifier.ErrUnavailable):
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
+	}
 }

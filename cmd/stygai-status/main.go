@@ -53,24 +53,32 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Write([]byte("ok"))
 }
 
-func zfsHandler(w http.ResponseWriter, r *http.Request) {
-	pool, err := zfs.Status(r.Context())
-	if err != nil {
-		slog.Error("zfsHandler", "error ", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "zfs check failed - " + err.Error()})
-		return
+type zfsReader func(context.Context) (zfs.Pool, error)
+
+func zfsHandler(read zfsReader) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pool, err := read(r.Context())
+		if err != nil {
+			slog.Error("zfsHandler", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "zfs check failed - " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, pool)
 	}
-	writeJSON(w, http.StatusOK, pool)
 }
 
-func systemHandler(w http.ResponseWriter, _ *http.Request) {
-	s, err := system.Collect()
-	if err != nil {
-		slog.Error("systemHandler", "error ", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "system check failed - " + err.Error()})
-		return
+type systemReader func() (system.Stats, error)
+
+func systemHandler(read systemReader) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		s, err := read()
+		if err != nil {
+			slog.Error("systemHandler", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "system check failed - " + err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, s)
 	}
-	writeJSON(w, http.StatusOK, s)
 }
 
 type checker interface {
@@ -92,6 +100,8 @@ func formatTime(lastPing *time.Time) string {
 	minutes := int(d.Minutes()) % 60
 	return fmt.Sprintf("%dh %dm ago", hours, minutes)
 }
+
+type listener func(ctx context.Context) ([]docker.Container, error)
 
 func backupsHandler(hc checker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -120,8 +130,6 @@ func backupsHandler(hc checker) http.HandlerFunc {
 	}
 }
 
-type listener func(ctx context.Context) ([]docker.Container, error)
-
 func dockerHandler(list listener) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cs, err := list(r.Context())
@@ -146,6 +154,16 @@ func dockerHandler(list listener) http.HandlerFunc {
 	}
 }
 
+func newMux(hcUrl, hcKey string) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", healthzHandler)
+	mux.HandleFunc("GET /api/v1/zfs", zfsHandler(zfs.Status))
+	mux.HandleFunc("GET /api/v1/system", systemHandler(system.Collect))
+	mux.HandleFunc("GET /api/v1/backups", backupsHandler(healthchecks.New(hcUrl, hcKey)))
+	mux.HandleFunc("GET /api/v1/docker", dockerHandler(docker.List))
+	return mux
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -162,12 +180,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", healthzHandler)
-	mux.HandleFunc("GET /api/v1/zfs", zfsHandler)
-	mux.HandleFunc("GET /api/v1/system", systemHandler)
-	mux.HandleFunc("GET /api/v1/backups", backupsHandler(healthchecks.New(hcUrl, hcKey)))
-	mux.HandleFunc("GET /api/v1/docker", dockerHandler(docker.List))
+	mux := newMux(hcUrl, hcKey)
 
 	srv := &http.Server{
 		Addr:              ":8082",
