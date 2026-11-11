@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -168,9 +169,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	err := godotenv.Load()
-	if err != nil {
-		slog.Error("error loading .env file")
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		slog.Error("error loading .env file", "err", err)
 		os.Exit(1)
 	}
 	hcUrl := os.Getenv("HC_URL")
@@ -181,6 +181,34 @@ func main() {
 	}
 
 	mux := newMux(hcUrl, hcKey)
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		client := &http.Client{
+			Timeout: 2 * time.Second,
+		}
+		req, err := http.NewRequestWithContext(ctx, "GET", "http://127.0.0.1:8082/healthz", nil)
+		if err != nil {
+			slog.Error("creating healthcheck request")
+			os.Exit(1)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			slog.Error("executing healthcheck request")
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			slog.Error("reading healthcheck response body")
+			os.Exit(1)
+		}
+		if resp.StatusCode == 200 && string(body) == "ok" {
+			os.Exit(0)
+		} else {
+			slog.Error("healthcheck response:", "status", resp.Status, "body", string(body))
+			os.Exit(1)
+		}
+
+	}
 
 	srv := &http.Server{
 		Addr:              ":8082",
