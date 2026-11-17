@@ -1,5 +1,7 @@
 # stygai-status
 
+[![CI](https://github.com/awaleha/stygai-status/actions/workflows/ci.yml/badge.svg)](https://github.com/awaleha/stygai-status/actions/workflows/ci.yml)
+
 Status API for my Homepage dashboard. One Go service that answers the questions I care about on my homelab box: containers up? hardware ok? when did the last ZFS scrub run? when did oldtown's backups land? Failures reach my phone through Healthchecks → ntfy.
 
 Written as a Go learning project — stdlib-first, gopsutil the one heavyweight dependency.
