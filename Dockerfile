@@ -1,11 +1,15 @@
 FROM golang:1.27-alpine AS build
+ARG VERSION=dev
+ARG COMMIT=unknown
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
       -o /out/stygai-status ./cmd/stygai-status \
- && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+ && CGO_ENABLED=0 GOOS=linux go build -trimpath \
+      -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" \
       -o /out/notify ./cmd/notify
 
 FROM debian:bookworm-slim
