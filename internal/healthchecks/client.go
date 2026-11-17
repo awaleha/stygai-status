@@ -2,7 +2,6 @@ package healthchecks
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,9 +25,6 @@ type Client struct {
 func New(baseUrl, key string) *Client {
 	c := &http.Client{
 		Timeout: 10 * time.Second,
-		Transport: &http.Transport{ //To fix later, DEV ONLY
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
 	}
 	return &Client{baseUrl, key, c}
 }

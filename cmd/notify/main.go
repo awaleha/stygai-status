@@ -15,21 +15,31 @@ import (
 	"github.com/awaleha/stygai-status/internal/notifier"
 )
 
+var version = "dev"
+var commit = "unknown"
+
 func main() {
 	topic := flag.String("topic", "", "ntfy topic")
 	tagsFlag := flag.String("tags", "", "comma-separated emoji tags")
+	hasV := flag.Bool("version", false, "version of this tool")
 	badUsage := "try 'notify --help' for more information "
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Command line tool for publishing to ntfy topics.\n")
 		fmt.Fprintf(os.Stderr, "NTFY_URL env variable must be set, --topic flag and message are mandatory\n\n")
 		fmt.Fprintf(os.Stderr, "Usage:\n  notify [options] message\n\n")
-		fmt.Fprintf(os.Stderr, "Examples:\n notify --topic stygai-alerts \"obsidian backup failed\"\n")
-		fmt.Fprintf(os.Stderr, "notify --topic stygai-backups --tags check \"restic: success\"\n")
-		fmt.Fprintf(os.Stderr, "notify --topic stygai-alerts --tags \"check,skull\" \"restic: fatal: lock held\"\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n notify --topic alerts \"obsidian backup failed\"\n")
+		fmt.Fprintf(os.Stderr, "notify --topic backups --tags check \"restic: success\"\n")
+		fmt.Fprintf(os.Stderr, "notify --topic alerts --tags \"check,skull\" \"restic: fatal: lock held\"\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if *hasV {
+		fmt.Printf("notify %s (commit %s)\n", version, commit)
+		os.Exit(0)
+	}
+
 	message := strings.Join(flag.Args(), " ")
 	if *topic == "" {
 		slog.Error("missing topic, " + badUsage)

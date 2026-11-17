@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -165,23 +166,21 @@ func newMux(hcUrl, hcKey string) *http.ServeMux {
 	return mux
 }
 
+var version = "dev"
+var commit = "unknown"
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
-		slog.Error("error loading .env file", "err", err)
-		os.Exit(1)
-	}
-	hcUrl := os.Getenv("HC_URL")
-	hcKey := os.Getenv("HC_KEY")
-	if hcUrl == "" || hcKey == "" {
-		slog.Error("value(s) not set -", "hcUrl", hcUrl, "hcKey", hcKey)
-		os.Exit(1)
+	hasV := flag.Bool("version", false, "version of this tool")
+	flag.Parse()
+	if *hasV {
+		fmt.Printf("stygai-status %s (commit %s)\n", version, commit)
+		os.Exit(0)
 	}
 
-	mux := newMux(hcUrl, hcKey)
-	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+	if flag.Arg(0) == "healthcheck" {
 		client := &http.Client{
 			Timeout: 2 * time.Second,
 		}
@@ -209,6 +208,18 @@ func main() {
 		}
 
 	}
+
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		slog.Error("error loading .env file", "err", err)
+		os.Exit(1)
+	}
+	hcUrl := os.Getenv("HC_URL")
+	hcKey := os.Getenv("HC_KEY")
+	if hcUrl == "" || hcKey == "" {
+		slog.Error("value(s) not set -", "hcUrl", hcUrl, "hcKey", hcKey)
+		os.Exit(1)
+	}
+	mux := newMux(hcUrl, hcKey)
 
 	srv := &http.Server{
 		Addr:              ":8082",
