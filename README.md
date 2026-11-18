@@ -6,6 +6,9 @@ Status API for my Homepage dashboard. One Go service that answers the questions 
 
 Written as a Go learning project — stdlib-first, gopsutil the one heavyweight dependency.
 
+stygai   == my home server
+oldtown  == my home pc
+
 ## Architecture
 
 ```text
